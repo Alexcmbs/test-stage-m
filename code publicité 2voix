@@ -1,0 +1,147 @@
+import openai
+import gradio
+from elevenlabs import generate, save
+from pydub import AudioSegment
+from pydub.playback import play
+from pydub import AudioSegment
+import wave
+import io
+
+import re
+
+
+
+
+openai.api_key="YOUR_KEY"
+
+messages=[{"role":"system","content":" Vous êtes un gestionnaire dans une société de publicité et vous devez créer un slogan entre 150 à 200 caractères avec les informations suivantes en français "}]
+"""Synthesizes speech from the input string of text."""
+from google.cloud import texttospeech
+import os 
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'C:\Users\N1\OneDrive\Documents\ENSAE\stages\M6 distribution\projettexttospeechapi-4ba7485835f6.json'
+
+client = texttospeech.TextToSpeechClient()
+
+
+
+import os
+import base64
+def convert_to_mp3(audio_tuple, output_path):
+    frame_rate = audio_tuple[0]
+    audio_data = audio_tuple[1]
+    sample_width = audio_data.dtype.itemsize
+    channels = 2  # Nombre de canaux audio
+
+    # Écriture des données audio dans un fichier WAV temporaire
+    with wave.open(output_path, "wb") as wav_file:
+        wav_file.setnchannels(channels)  # Spécifier le nombre de canaux
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(frame_rate)
+        wav_file.writeframes(audio_data)
+
+    # Chargement du fichier WAV temporaire en tant qu'objet AudioSegment
+    audio_segment = AudioSegment.from_wav(output_path)
+    audio_segment.export(output_path, format="mp3")
+
+def segment_sentences(text):
+    # Regex pattern pour trouver les fins de phrases en se basant sur les ponctuations courantes.
+    pattern = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s'
+
+    # Utilisation de la regex pour segmenter les phrases.
+    sentences = re.split(pattern, text)
+
+    # Suppression des espaces en début et fin de chaque phrase.
+    sentences = [sentence.strip() for sentence in sentences]
+
+    return sentences
+
+
+def CustomChatGPT(nom_de_l_entreprise, produit_ou_service_promu, objectif_de_la_publicite, public_cible, Lieu_geographique, Ton_de_la_publicite, slogan_principal, avantage_pour_le_consommateur, adresse_et_contact,name):
+    messages.append({"role": "user", "content": nom_de_l_entreprise})
+    messages.append({"role": "user", "content": produit_ou_service_promu})
+    messages.append({"role": "user", "content": objectif_de_la_publicite})
+    messages.append({"role": "user", "content": public_cible})
+    messages.append({"role": "user", "content": Lieu_geographique})
+    messages.append({"role": "user", "content": Ton_de_la_publicite})
+    messages.append({"role": "user", "content": slogan_principal})
+    messages.append({"role": "user", "content": avantage_pour_le_consommateur})
+    messages.append({"role": "user", "content": adresse_et_contact})
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
+    ChatGPT_reply = response["choices"][0]["message"]["content"]
+    messages.append({"role": "assistant", "content": ChatGPT_reply})
+    print(ChatGPT_reply)
+   
+
+    
+    segment_sentences(ChatGPT_reply)
+
+    audio=generate(
+            text=segment_sentences(ChatGPT_reply)[0],
+            api_key="YOUR_KEY",
+            voice="Elli",
+            model='eleven_multilingual_v1',
+            )
+
+    for i in range(1,len(segment_sentences(ChatGPT_reply))):
+
+        if i%2==0:
+
+            audio = audio + generate(
+                text=segment_sentences(ChatGPT_reply)[i],
+                 api_key="YOUR_KEY",
+                 voice="Elli",
+                model='eleven_multilingual_v1',
+            )
+    # Save the audio content to a file
+
+        else:
+            audio = audio + generate(
+               text=segment_sentences(ChatGPT_reply)[i],
+                api_key="YOUR_KEY",
+                voice="Arnold",
+                model='eleven_multilingual_v1',
+            )
+
+
+   
+
+    save(audio, "elevenlabs.mp3")
+
+    convert_to_mp3(name,"name.mp3")
+    background_music_path = "C:/Users/N1/name.mp3"
+    voiceover_path = "C:/Users/N1/elevenlabs.mp3"
+    background_music = AudioSegment.from_file(background_music_path, format="mp3")
+    voiceover = AudioSegment.from_file(voiceover_path, format="mp3")
+    background_music = background_music.normalize()
+    voiceover = voiceover.normalize()
+    background_music = background_music.apply_gain(-5)  # Réduire le volume de 6 dB
+    voiceover = voiceover.apply_gain(-5)  # Réduire le volume de 3 dB
+
+    # Récupérer le niveau sonore du voiceover   
+    voiceover_rms = voiceover.rms
+    print(voiceover_rms)
+    print(background_music.rms)
+    # Appliquer l'auto ducking en réduisant le volume de la musique de fond lorsque le voiceover est présent
+    ducked_music = background_music.overlay(voiceover, gain_during_overlay=-5) 
+
+    export_path = "pub_audio.mp3"
+    ducked_music.export(export_path, format="mp3")
+    print("Fichier exporté :", export_path)
+
+
+
+    # Read the audio content from the file
+
+
+    return ("C:/Users/N1/pub_audio.mp3",ChatGPT_reply)
+    
+
+# Define the output as an HTML component
+
+
+demo = gradio.Interface(fn=CustomChatGPT, inputs=["text", "text", "text", "text", "text", "text", "text", "text", "text",gradio.Audio(label="audio file")], outputs=[gradio.Audio(),"text"], title="Création de publicité, Bonjour!")
+
+demo.launch(share=True)
